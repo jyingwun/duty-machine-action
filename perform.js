@@ -7,22 +7,40 @@ require('dotenv').config()
 
 let TOKEN = process.env.TOKEN
 let REPOSITORY = process.env.REPOSITORY
+let EVENT = process.env.EVENT
 let [OWNER, REPO] = REPOSITORY.split('/')
 
 let octokit = new Octokit({
   auth: TOKEN
 })
 
-async function performTasks() {
-  let { data } = await octokit.issues.listForRepo({
-    owner: OWNER,
-    repo: REPO,
-    state: 'open'
-  })
+function checkSubmission(body) {
+  //if (body.split("\n").length > 1) return false
+  return true
+}
 
-  let promises = data.map(async (issue) => {
+async function getTasks() {
+  if (EVENT) {
+    console.log('getting single task')
+    return [JSON.parse(EVENT).issue]
+  } else {
+    console.log('getting list of tasks')
+    let { data } = await octokit.issues.listForRepo({
+      owner: OWNER,
+      repo: REPO,
+      state: 'open'
+    })
+    return data
+  }
+}
+
+async function performTasks(list) {
+  let promises = list.map(async (issue) => {
     try {
-      let articleData = await fetchArticle(issue.body || issue.title)
+      if (!checkSubmission(issue.body)) {
+        throw "Invalid submission"
+      }
+      let articleData = await fetchArticle(issue.body)
       await octokit.issues.createComment({
         owner: OWNER,
         repo: REPO,
@@ -58,4 +76,9 @@ async function performTasks() {
   await Promise.all(promises)
 }
 
-performTasks()
+async function perform() {
+  let tasks = await getTasks()
+  await performTasks(tasks)
+}
+
+perform()
